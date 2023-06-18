@@ -9,7 +9,9 @@ from django.utils.encoding import force_bytes
 from wordpress_auth import (WORDPRESS_LOGGED_IN_KEY, WORDPRESS_LOGGED_IN_SALT,
                             WORDPRESS_COOKIEHASH)
 from wordpress_auth.models import WpOptions, WpUsers
-
+from django.contrib.auth import login
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 def get_site_url():
     url = WpOptions.objects.using('wordpress') \
@@ -20,6 +22,8 @@ def get_site_url():
 def get_login_url():
     return urljoin(get_site_url(), 'wp-login.php')
 
+def get_logout_url():
+    return urljoin(get_site_url(), 'wp-login.php?action=logout')
 
 def get_wordpress_user(request):
     if WORDPRESS_COOKIEHASH is None:
@@ -27,11 +31,21 @@ def get_wordpress_user(request):
     else:
         cookie_hash = WORDPRESS_COOKIEHASH
 
-    cookie = request.COOKIES.get('wordpress_logged_in_' + cookie_hash)
-    
+    cookie_name = 'wordpress_logged_in_' + cookie_hash
+    cookie = request.COOKIES.get(cookie_name)
     if cookie:
         cookie = unquote_plus(cookie)
-        return _validate_auth_cookie(cookie)
+        cookie_list = _parse_auth_cookie(cookie)
+        if cookie_list:
+            wordpress_user_validate = _validate_auth_cookie(cookie_list)
+            if wordpress_user_validate:
+                if not request.user.is_authenticated:
+                    # Esto se podria mover a una vista de login a donde te puede
+                    # redirigir wordpress al finalizar el login de wordpress para loggear en django
+                    django_user = User.objects.get(pk=wordpress_user_validate.id)
+                    login(request, django_user)
+                return wordpress_user_validate
+    return False
 
 def wordpress_context_processor(request):
     return {
@@ -46,13 +60,8 @@ def _parse_auth_cookie(cookie):
     return elements if len(elements) == 4 else None
 
 
-def _validate_auth_cookie(cookie):
-    cookie_elements = _parse_auth_cookie(cookie)
-
-    if not cookie_elements:
-        return False
-
-    username, expiration, token, cookie_hmac = cookie_elements
+def _validate_auth_cookie(cookie_list):
+    username, expiration, token, cookie_hmac = cookie_list
 
     # Quick check to see if an honest cookie has expired
     if float(expiration) < time():
