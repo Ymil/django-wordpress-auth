@@ -2,13 +2,12 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
 
 from wordpress_auth.utils import get_login_url
-
+from django.urls import reverse
 
 def wordpress_login_required(fn, *args, **kwargs):
     def wrapped(request, *args, **kwargs):
         if not request.wordpress_user:
-            redirect_to = request.build_absolute_uri(request.path)
-            return redirect(get_login_url() + "?redirect_to=" + redirect_to)
+            return redirect(reverse('login'))
         else:
             return fn(request, *args, **kwargs)
     return wrapped

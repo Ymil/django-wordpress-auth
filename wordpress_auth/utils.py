@@ -5,13 +5,12 @@ from time import time
 from urllib.parse import urljoin
 from urllib.parse import unquote_plus
 from django.utils.encoding import force_bytes
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse
 
 from wordpress_auth import (WORDPRESS_LOGGED_IN_KEY, WORDPRESS_LOGGED_IN_SALT,
                             WORDPRESS_COOKIEHASH)
 from wordpress_auth.models import WpOptions, WpUsers
-from django.contrib.auth import login
-from django.contrib.auth import get_user_model
-User = get_user_model()
 
 def get_site_url():
     url = WpOptions.objects.using('wordpress') \
@@ -37,14 +36,7 @@ def get_wordpress_user(request):
         cookie = unquote_plus(cookie)
         cookie_list = _parse_auth_cookie(cookie)
         if cookie_list:
-            wordpress_user_validate = _validate_auth_cookie(cookie_list)
-            if wordpress_user_validate:
-                if not request.user.is_authenticated:
-                    # Esto se podria mover a una vista de login a donde te puede
-                    # redirigir wordpress al finalizar el login de wordpress para loggear en django
-                    django_user = User.objects.get(pk=wordpress_user_validate.id)
-                    login(request, django_user)
-                return wordpress_user_validate
+            return _validate_auth_cookie(cookie_list)
     return False
 
 def wordpress_context_processor(request):
@@ -95,3 +87,10 @@ def _validate_auth_cookie(cookie_list):
         return False
 
     return user
+
+class WPLoginRequiredMixin(LoginRequiredMixin):
+    """Verify that the current user is authenticated."""
+    def dispatch(self, request, *args, **kwargs):
+        if not request.wordpress_user:            
+            return reverse('login')
+        return super().dispatch(request, *args, **kwargs)
