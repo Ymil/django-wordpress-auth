@@ -18,11 +18,33 @@ def wordpress_login_page_redirect(request):
     redirect_to = request.build_absolute_uri(reverse("login-trapper", kwargs={'final_url': final_url}))
     return redirect(get_login_url() + "?redirect_to=" + redirect_to)
 
+def __exist_django_user(wordpress_user):
+    try:
+        User.objects.get(pk=wordpress_user.id)
+        return True
+    except User.DoesNotExist:
+        return False
 
+def __create_django_user(wordpress_user):
+    django_user = User.objects.create_user(
+        username=wordpress_user.login,
+        email=wordpress_user.email,
+        password=wordpress_user.password,
+        usuario_wp_id=wordpress_user.id
+    )
+    django_user.save()
+    return django_user
+
+def __get_django_user(wordpress_user):
+    return User.objects.get(pk=wordpress_user.id)
+    
 def wordpress_login_trapper(request, final_url):
     wordpress_user = get_wordpress_user(request)
     if wordpress_user:
-        django_user = User.objects.get(pk=wordpress_user.id)
+        if not __exist_django_user(wordpress_user):
+           django_user = __create_django_user(wordpress_user)
+        else:
+            django_user = __get_django_user(wordpress_user)
         login(request, django_user)
         return redirect(final_url)
     else:
